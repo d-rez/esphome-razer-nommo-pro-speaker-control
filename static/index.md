@@ -9,8 +9,8 @@ them on, or find your phone and launch the app.
 
 No more! With some work and effort I was able to sniff and decrypt the Bluetooth
 protocol used by Razer which allows for pretty much full control of the device.
-With the power of ESP32 (sorry ESP8266 lovers, as mentioned the speakers use BT)
-Home Assistant, you can now control speakers via WiFi and even integrate them with
+With the power of ESP32 (sorry ESP8266 lovers, as mentioned the speakers use BT), ESPHome
+and Home Assistant, you can now control speakers via WiFi and even integrate them with
 things like automatic power-on together with a TV and so on.
 
 Supported features:
@@ -87,12 +87,12 @@ media_player:
 # Making it even nicer
 
 ![Lovelace overview](/lovelace_overview.png)
-![Lovelace EQ Selection](/lovelace_eq_selection)
+![Lovelace EQ Selection](/lovelace_eq_selection.png)
 ![Lovelace Source Selection](/lovelace_source_selection.png)
 
 To make it look like below, you'll need two more things:
 
-1. Download and install https://github.com/kalkih/mini-media-player custom component in your HASS
+1. Download and install the [mini-media-player](https://github.com/kalkih/mini-media-player) custom component by kalkih in your HASS instance
 2. Create a new Lovelace card with the following (or similar) code:
 
 ```
