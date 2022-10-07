@@ -1,6 +1,6 @@
 # These substitutions allow the end user to override certain values
 substitutions:
-  name: "razer-nommo-pro-speaker-controller"
+  name: "razer-nommo-pro-controller"
   device_name: rz_spk_ctl
   speaker_mac: 00:00:00:00:00:00 # CHANGE ME
 
