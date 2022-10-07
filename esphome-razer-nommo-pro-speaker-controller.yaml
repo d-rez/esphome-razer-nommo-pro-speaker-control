@@ -73,14 +73,17 @@ improv_serial:
 #                ^^                                 selected source (details below)
 #                   ^^                              mute state (inverted)
 #                      ^^ ^^                        equalizer presets (details below)
-#                            ^^                     ?? not sure
+#                            ^^                     automatic 20min power off state
 #                               ^^                  power state
 #
 # 04 ff 0d cc 49 0c 19 00 38 32 2c 27 2c 32 38 3d
 # ^^ ^^ ^^ ^^ ^^                                    here we have a longer packet but same logic applies as above to these bytes
 #                ^^                                 volume level (0..100)
 #                   ^^                              bass level (0..100)
-#                      ^^ ^^ ^^ ^^ ^^ ^^ ^^ ^^ ^^   ?? haven't looked too much into the rest, I'd assume these could be EQ values
+#                      ^^                           ?? zeroes?
+#                         ^^ ^^ ^^ ^^ ^^ ^^ ^^ ^^   EQ bands (0x0..0x64 // 0..100), middle is 0x32 (50), each step being between... 0x06 and 0x05? Differs. Kinda weird. I.e. 0x32, 0x2c, 0x27, 0x21?
+#                                                            9 steps in app above and below 0dB, so 19 steps total, 5.26 per step? are they doing some weird rounding here? Or maybe it's just app
+#                                                            being weird and speaker accepting full 0..100 decimal range?
 #
 # Example WRITE packets dissected:
 #
