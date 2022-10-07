@@ -1,3 +1,5 @@
+![Picture of speakers](https://assets2.razerzone.com/images/campaigns/nommo-pro/nommo-pro-campaign-og.jpg)
+
 # About
 
 Razer Nommo Pro are decent speakers and come with a phone app to control them in
@@ -19,17 +21,15 @@ Supported features:
 - Mute toggle
 - Power control
 
-![HASS overview](/static/hass_device.png)
+![HASS overview](/hass_device.png)
 
 # Installation
 
-You can use the button below to install the pre-built firmware directly to your device via USB from the browser.
+Download the project [yaml config file](https://github.com/d-rez/esphome-razer-nommo-pro-speaker-control/blob/main/esphome-razer-nommo-pro-speaker-controller.yaml) from the repository. Edit required values, compile and flash as usual.
 
-Make sure to update the MAC address of your speakers.
-
-<esp-web-install-button manifest="./manifest.json"></esp-web-install-button>
-
-<script type="module" src="https://unpkg.com/esp-web-tools@8.0.3/dist/web/install-button.js?module"></script>
+## Important
+- Make sure to add speaker's MAC address in the substitutions section.
+- Also add [HASS API](https://esphome.io/components/api.html) and [ESPHome OTA](https://esphome.io/components/ota.html) passwords for security as well as [add proper WiFi credentials](https://esphome.io/components/wifi.html)
 
 # Adding as a Media Player to Home Assistant
 
@@ -55,13 +55,13 @@ media_player:
         target:
           entity_id: select.rz_spk_ctl_nommo_source
         data:
-          option: "{{ source }}"
+          option: "\{\{ source \}\}"
       volume_set:
         service: number.set_value
         target:
           entity_id: number.rz_spk_ctl_nommo_volume
         data:
-          value: "{{ volume_level }}"
+          value: "\{\{ volume_level \}\}"
       volume_mute:
         service: switch.toggle
         target:
@@ -71,7 +71,7 @@ media_player:
         target:
           entity_id: select.rz_spk_ctl_nommo_eq
         data:
-          option: "{{ sound_mode }}"
+          option: "\{\{ sound_mode \}\}"
     attributes:
       is_volume_muted: switch.rz_spk_ctl_nommo_mute
       volume_level: number.rz_spk_ctl_nommo_volume
@@ -86,14 +86,15 @@ media_player:
 
 # Making it even nicer
 
-![Lovelace overview](static/lovelace_overview.png)
-![Lovelace EQ Selection](/static/lovelace_eq_selection)
-![Lovelace Source Selection](static/lovelace_source_selection.png)
+![Lovelace overview](/lovelace_overview.png)
+![Lovelace EQ Selection](/lovelace_eq_selection)
+![Lovelace Source Selection](/lovelace_source_selection.png)
 
 To make it look like below, you'll need two more things:
 
 1. Download and install https://github.com/kalkih/mini-media-player custom component in your HASS
 2. Create a new Lovelace card with the following (or similar) code:
+
 ```
 type: vertical-stack
 title: Razer Nommo Pro
