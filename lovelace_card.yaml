@@ -1,0 +1,30 @@
+type: vertical-stack
+title: Razer Nommo Pro
+cards:
+  - type: custom:mini-media-player
+    entity: media_player.razer_nommo_pro_speakers
+    source: full
+    artwork: none
+    group: false
+    name: Speakers
+    volume_stateless: false
+    hide:
+      play_pause: true
+      volume_level: false
+      power_state: false
+      sound_mode: false
+    sound_mode: full
+    info: short
+    icon: mdi:speaker
+  - type: conditional
+    conditions:
+      - entity: media_player.razer_nommo_speakers
+        state_not: 'off'
+    card:
+      type: entities
+      entities:
+        - entity: number.rz_spk_ctl_nommo_bass_volume
+          name: Bass Level
+          secondary_info: none
+      show_header_toggle: false
+      state_color: false

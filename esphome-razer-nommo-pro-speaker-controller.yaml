@@ -1,0 +1,475 @@
+# These substitutions allow the end user to override certain values
+substitutions:
+  name: "razer-nommo-pro-speaker-controller"
+  device_name: rz_spk_ctl
+  speaker_mac: 00:00:00:00:00:00 # CHANGE ME
+
+esphome:
+  name: "${name}"
+  # Automatically add the mac address to the name
+  # so you can use a single firmware for all devices
+  #name_add_mac_suffix: true
+
+  # This will allow for (future) project identification,
+  # configuration and updates.
+  project:
+    name: esphome.razer-nommo-pro-speaker-controller
+    version: "1.0"
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+# To be able to get logs from the device via serial and api.
+logger:
+
+# API is a requirement of the dashboard import.
+api:
+
+# OTA is required for Over-the-Air updating
+ota:
+
+# This should point to the public location of this yaml file.
+dashboard_import:
+  package_import_url: github://d-rez/esphome-razer-nommo-pro-speaker-control/d-rez/esphome-razer-nommo-pro-speaker-controller.yaml@main
+
+wifi:
+  # Set up a wifi access point using the device name above
+  ap:
+    password: "beatrice"
+
+# In combination with the `ap` this allows the user
+# to provision wifi credentials to the device.
+captive_portal:
+
+##########################################################
+# Most projects should not remove anything from above here
+# and should just modify the name, project name/version
+# and git url for the dashboard_import
+##########################################################
+
+
+# Sets up Bluetooth LE (Only on ESP32) to allow the user
+# to provision wifi credentials to the device.
+esp32_improv:
+  authorizer: none
+
+# Sets up the improv via serial client for Wi-Fi provisioning.
+# Handy if your device has a usb port for the user to add credentials when they first get it.
+improv_serial:
+
+
+# =========================================================
+# Razer's BLE protocol reverse engineering
+# Done in 2022 by dark_skeleton
+# No dogs have been harmed while sniffing and analysing Bluetooth packets
+# =========================================================
+# Service                     5052494d-2dab-0341-6972-6f6861424c45
+# Notification characteristic 43484152-2dab-3141-6972-6f6861424c45
+# Write characteristic        43484152-2dab-3241-6972-6f6861424c45
+#
+# Example notification packets dissected:
+#
+# 04 ff 08 c0 49 04 01 00 00 01 01
+# ^^ ^^       ^^                                    04, ff and 49 bytes never change
+#       ^^                                          response length in bytes
+#          ^^                                       indicates type of response. See list further down, there's generally only two we care about (0xCC and 0xC0)
+#                ^^                                 selected source (details below)
+#                   ^^                              mute state (inverted)
+#                      ^^ ^^                        equalizer presets (details below)
+#                            ^^                     ?? not sure
+#                               ^^                  power state
+#
+# 04 ff 0d cc 49 0c 19 00 38 32 2c 27 2c 32 38 3d
+# ^^ ^^ ^^ ^^ ^^                                    here we have a longer packet but same logic applies as above to these bytes
+#                ^^                                 volume level (0..100)
+#                   ^^                              bass level (0..100)
+#                      ^^ ^^ ^^ ^^ ^^ ^^ ^^ ^^ ^^   ?? haven't looked too much into the rest, I'd assume these could be EQ values
+#
+# Example WRITE packets dissected:
+#
+# 01 00 fc 02 d5 48
+# ^^ ^^ ^^                                          static for all write requestse
+#          ^^                                       number of bytes that follow - 0x02 if it's only a broadcast request and we're not changing settings. 0x03 if we are.
+#             ^^                                    type of the request (see below)
+#                ^^                                 always 0x48 here, probably indicates end of type request
+#
+# 01 00 fc 03 c6 48 00
+# ^^ ^^ ^^ ^^    ^^                                 same as above
+#             ^^                                    write operation type/id. See below.
+#                   ^^                              value of the parameter to write
+#
+# These have been gathered by probing the speaker, I couldn't decrypt all but they're probably not needed anyway
+#
+# Format below:
+# request bytes - description
+#   response => description
+#
+# 01 00 fc 02 ce 48 - firmware version request
+#   04 ff 11 ce 49 00 00 0c 0a 00 00 00 31 01 03 00 00 00 00 00 => Translates to FW C0A.31.1030000
+# 01 00 fc 02 cf 48 - ??? requested when mobile app starts up
+#   04 ff 11 cf 49 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 => seems to always return zeroes? not important
+# 01 00 fc 02 d0 48 - ???
+#   04 ff 04 d0 49 00 00 => zeroes again?
+# 01 00 fc 02 d4 48 - ???
+#   04 ff 08 d4 49 7c 96 d2 5a 8e dc => ???
+# 01 00 fc 02 d5 48 - ???
+#   04ff0ad54910000000000000ff => ???
+# 01 00 fc 02 c0 48 -- request power, mute, eq, dolby, source etc. broadcast
+#   04 ff 08 c0 49 04 01 00 01 01 01 => already described above and below
+# 01 00 fc 02 cc 48 - volume, bass, probably more
+#   04ff0dcc49071700423732323232373d => already described above and below
+
+# argument write operation types:
+# once a write request is sent, speaker will reply with a notification and updated states of given type
+#   0xc6:
+#     type: power
+#     values: 0x01 (on), 0x00 (off)
+#     reply: 0xc0
+#   0xc1:
+#     type: mute
+#     values: 0x01 (mute off), 0x00 (mute on)
+#     reply: 0xc0
+#   0xc8:
+#     type: volume
+#     values: 0..100 (0x00 .. 0x64)
+#     reply: 0xcc
+#   0xc7:
+#     type: bass volume
+#     values: 0..100 (0x00 .. 0x64)
+#     reply: 0xcc
+#   0xc4:
+#     type: EQ
+#     values: 03: Movie, 02: Music, 01: Game, 00: THX (dolby must be disabled), 0A: Custom EQ (dolby must be disabled).
+#                                        //  Invalid values seem to work but just crash the phone app when it refreshes
+#     reply: 0xc0
+#   0xc2:
+#     type: Dolby
+#     values: 0,1 (should be followed up with a 0xc4 write to make sure we're not using invalid values)
+#     reply: 0xc0
+#   0xc5:
+#     type: Source
+#     values: 01: optical, 03: bt, 02: analog, 04: usb
+#     reply: 0xc0, 0xcc
+
+text_sensor:
+  - platform: template
+    name: "${device_name}_uptime_human"
+    id: uptime_human
+    entity_category: diagnostic
+    icon: mdi:clock-start
+
+time:
+  - platform: homeassistant
+    id: homeassistant_time
+
+esp32_ble_tracker:
+
+output:
+  - id: blue_led
+    platform: gpio
+    pin: GPIO2
+    # Using output.gpio here because status_led component does not clear errored state once BLE device is disconnected i.e. using the ble_client switch
+
+ble_client:
+  - mac_address: "${speaker_mac}"
+    id: nommo_tv
+    on_connect:
+      then:
+        - lambda: |-
+            ESP_LOGD("ble_client_lambda", "Connected to BLE device");
+            id(nommo_ble_status).publish_state(true);
+            id(blue_led).turn_off(); // signal device connected
+        - delay: 3s # fails to execute ble_write if done too soon after connecting
+        - ble_client.ble_write:
+            id: nommo_tv
+            service_uuid: '5052494d-2dab-0341-6972-6f6861424c45'
+            characteristic_uuid: "43484152-2dab-3241-6972-6f6861424c45"
+            value: [0x01, 0x00, 0xfc, 0x02, 0xc0, 0x48] # request settings (0xc0)
+        - delay: 500ms
+        - ble_client.ble_write:
+            id: nommo_tv
+            service_uuid: '5052494d-2dab-0341-6972-6f6861424c45'
+            characteristic_uuid: "43484152-2dab-3241-6972-6f6861424c45"
+            value: [0x01, 0x00, 0xfc, 0x02, 0xcc, 0x48] # request volumes (0xcc)
+    on_disconnect:
+      then:
+        - lambda: |-
+            ESP_LOGD("ble_client_lambda", "Disconnected from BLE device");
+            id(nommo_ble_status).publish_state(false);
+            id(blue_led).turn_on(); // signal device disconnected
+
+switch:
+  - platform: ble_client
+    ble_client_id: nommo_tv
+    name: "${device_name}_nommo_enable_control"
+
+  - platform: template
+    name: "${device_name}_nommo_power"
+    icon: mdi:power
+    turn_on_action:
+      ble_client.ble_write:
+        id: nommo_tv
+        service_uuid: '5052494d-2dab-0341-6972-6f6861424c45'
+        characteristic_uuid: "43484152-2dab-3241-6972-6f6861424c45"
+        value: [0x01, 0x00, 0xfc, 0x03, 0xc6, 0x48, 0x01]
+    turn_off_action:
+      ble_client.ble_write:
+        id: nommo_tv
+        service_uuid: '5052494d-2dab-0341-6972-6f6861424c45'
+        characteristic_uuid: "43484152-2dab-3241-6972-6f6861424c45"
+        value: [0x01, 0x00, 0xfc, 0x03, 0xc6, 0x48, 0x00]
+    lambda: !lambda |-
+      return id(nommo_power_state).state;
+
+  - platform: template
+    name: "${device_name}_nommo_mute"
+    icon: mdi:volume-mute
+    turn_on_action:
+      ble_client.ble_write:
+        id: nommo_tv
+        service_uuid: '5052494d-2dab-0341-6972-6f6861424c45'
+        characteristic_uuid: "43484152-2dab-3241-6972-6f6861424c45"
+        value: [0x01, 0x00, 0xfc, 0x03, 0xc1, 0x48, 0x00]
+    turn_off_action:
+      ble_client.ble_write:
+        id: nommo_tv
+        service_uuid: '5052494d-2dab-0341-6972-6f6861424c45'
+        characteristic_uuid: "43484152-2dab-3241-6972-6f6861424c45"
+        value: [0x01, 0x00, 0xfc, 0x03, 0xc1, 0x48, 0x01]
+    lambda: !lambda |-
+      return id(nommo_muted_state).state;
+
+
+binary_sensor:
+  - platform: status
+    name: "${device_name}_status"
+  - platform: template
+    id: nommo_power_state
+  - platform: template
+    id: nommo_muted_state
+  - platform: template
+    id: nommo_ble_status
+    name: "${device_name}_nommo_ble_status"
+    device_class: connectivity
+    entity_category: diagnostic
+  - platform: template
+    id: nommo_eq_dolby
+    on_state:
+      then:
+        - component.update: nommo_eq
+
+
+number:
+  - platform: template
+    name: "${device_name}_nommo_volume"
+    id: nommo_volume
+    min_value: 0
+    max_value: 1
+    step: 0.01
+    icon: 'mdi:volume-high'
+    set_action:
+      - ble_client.ble_write:
+          id: nommo_tv
+          service_uuid: '5052494d-2dab-0341-6972-6f6861424c45'
+          characteristic_uuid: "43484152-2dab-3241-6972-6f6861424c45"
+          value: !lambda |-
+            // x coming from home assistant media_player will be in 0..1 range, speaker expects 0..100
+            return {0x01, 0x00, 0xfc, 0x03, 0xc8, 0x48, uint8_t(x*100)};
+    lambda: |-
+      return id(nommo_volume_raw).state;
+
+  - platform: template
+    name: "${device_name}_nommo_bass_volume"
+    id: bass_volume
+    min_value: 0
+    max_value: 1
+    step: 0.01
+    icon: 'mdi:tune'
+    set_action:
+      - ble_client.ble_write:
+          id: nommo_tv
+          service_uuid: '5052494d-2dab-0341-6972-6f6861424c45'
+          characteristic_uuid: "43484152-2dab-3241-6972-6f6861424c45"
+          value: !lambda |-
+            // x coming from home assistant media_player will be in 0..1 range, speaker expects 0..100
+            return {0x01, 0x00, 0xfc, 0x03, 0xc7, 0x48, uint8_t(x*100)};
+    lambda: |-
+      return id(bass_volume_raw).state;
+
+
+sensor:
+  - platform: wifi_signal
+    name: "${device_name}_rssi"
+    update_interval: 5min
+
+  - platform: uptime
+    id: uptime_sensor
+    name: "${device_name}_uptime"
+    update_interval: 5min
+    on_raw_value:
+      then:
+        - text_sensor.template.publish:
+            id: uptime_human
+            state: !lambda |-
+              int seconds = round(id(uptime_sensor).raw_state);
+              int days = seconds / (24 * 3600);
+              seconds = seconds % (24 * 3600);
+              int hours = seconds / 3600;
+              seconds = seconds % 3600;
+              int minutes = seconds /  60;
+              seconds = seconds % 60;
+              return (
+                (days ? to_string(days) + "d " : "") +
+                (hours ? to_string(hours) + "h " : "") +
+                (minutes ? to_string(minutes) + "m " : "") +
+                (to_string(seconds) + "s")
+              ).c_str();
+
+  - platform: template
+    id: nommo_eq_raw
+    on_value:
+      then:
+        - component.update: nommo_eq
+
+  - platform: template
+    id: nommo_source_raw
+    on_value:
+      then:
+        - component.update: nommo_source
+
+  - platform: template
+    id: bass_volume_raw
+    filters:
+      # x coming from home assistant media_player will be in 0..1 range, speaker expects 0..100
+      - multiply: 0.01
+    on_value:
+      then:
+        - component.update: bass_volume
+
+  - platform: template
+    id: nommo_volume_raw
+    filters:
+      # x coming from home assistant media_player will be in 0..1 range, speaker expects 0..100
+      - multiply: 0.01
+    on_value:
+      then:
+        - component.update: nommo_volume
+
+  - platform: ble_client
+    ble_client_id: nommo_tv
+    id: nommo_ble_notification
+    service_uuid: '5052494d-2dab-0341-6972-6f6861424c45'
+    characteristic_uuid: '43484152-2dab-3141-6972-6f6861424c45'
+    notify: true
+    lambda: |-
+      if (x.size() < 4) { return {}; } // don't care about smaller packets (if any)
+
+      if (x[3] == 0xCC) {
+        id(nommo_volume_raw).publish_state(x[5]);
+        id(bass_volume_raw).publish_state(x[6]);
+      }
+      else if (x[3] == 0xC0) {
+        id(nommo_power_state).publish_state(x[10]);
+        id(nommo_muted_state).publish_state(!x[6]);
+        id(nommo_eq_dolby).publish_state(x[7]);
+        id(nommo_eq_raw).publish_state(x[8]);
+        id(nommo_source_raw).publish_state(x[5]);
+      }
+      return {};
+
+
+select:
+  - platform: template
+    name: "${device_name}_nommo_source"
+    id: nommo_source
+    icon: mdi:import
+    lambda: |-
+      if (id(nommo_source_raw).state==0x01) {
+        return {"Optical"};
+      } else if (id(nommo_source_raw).state==0x02) {
+        return {"Analog"};
+      } else if (id(nommo_source_raw).state==0x03) {
+        return {"Bluetooth"};
+      } else if (id(nommo_source_raw).state==0x04) {
+        return {"USB"};
+      } else {
+        return {};
+      }
+    options:
+      - Optical
+      - Analog
+      - Bluetooth
+      - USB
+    set_action:
+      ble_client.ble_write:
+            id: nommo_tv
+            service_uuid: '5052494d-2dab-0341-6972-6f6861424c45'
+            characteristic_uuid: "43484152-2dab-3241-6972-6f6861424c45"
+            value: !lambda |-
+              uint8_t src = 0;
+              (x=="Optical" && (src = 0x01)) || (x=="Analog" && (src = 0x02)) || (x=="Bluetooth" && (src = 0x03)) || (x=="USB" && (src=0x04));
+              return {0x01, 0x00, 0xfc, 0x03, 0xc5, 0x48, src};
+
+  - platform: template
+    name: "${device_name}_nommo_eq"
+    id: nommo_eq
+    icon: 'mdi:equalizer'
+    lambda: |-
+      if (id(nommo_eq_raw).state==0) {
+        return {"THX"};
+      }
+
+      char buffer[14];
+
+      if (id(nommo_eq_raw).state==0x01) {
+        sprintf(buffer, "%s%s", id(nommo_eq_dolby).state?"Dolby ":"", "Game");
+      } else if (id(nommo_eq_raw).state==0x02) {
+        sprintf(buffer, "%s%s", id(nommo_eq_dolby).state?"Dolby ":"", "Music");
+      } else if (id(nommo_eq_raw).state==0x03) {
+        sprintf(buffer, "%s%s", id(nommo_eq_dolby).state?"Dolby ":"", "Movie");
+      } else if (id(nommo_eq_raw).state==0x0a) {
+        sprintf(buffer, "Custom EQ");
+      }
+
+      return {buffer};
+    options:
+      - Dolby Game
+      - Dolby Music
+      - Dolby Movie
+      - THX
+      - Game
+      - Music
+      - Movie
+      - Custom EQ
+    set_action:
+      # Need to update both Dolby and EQ bytes using 2 separate writes
+      - ble_client.ble_write:
+          # EQ state
+          id: nommo_tv
+          service_uuid: '5052494d-2dab-0341-6972-6f6861424c45'
+          characteristic_uuid: "43484152-2dab-3241-6972-6f6861424c45"
+          value: !lambda |-
+            uint8_t eq = 0; // 0 is THX
+            if (x=="Dolby Game" || x=="Game") {
+              eq = 0x01;
+            } else if (x=="Dolby Music" || x=="Music") {
+              eq = 0x02;
+            } else if (x=="Dolby Movie" || x=="Movie") {
+              eq = 0x03;
+            } else if (x=="Custom EQ") {
+              eq = 0x0a;
+            } // else == 0 so THX
+            return {0x01, 0x00, 0xfc, 0x03, 0xc4, 0x48, eq};
+      - ble_client.ble_write:
+          # Dolby state
+          id: nommo_tv
+          service_uuid: '5052494d-2dab-0341-6972-6f6861424c45'
+          characteristic_uuid: "43484152-2dab-3241-6972-6f6861424c45"
+          value: !lambda |-
+            uint8_t dolby = 0;
+            if (x=="Dolby Game" || x=="Dolby Music" || x=="Dolby Movie" ) {
+              dolby = 0x01;
+            }
+            return {0x01, 0x00, 0xfc, 0x03, 0xc2, 0x48, dolby};
