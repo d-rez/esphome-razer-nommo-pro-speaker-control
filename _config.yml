@@ -1,4 +1,4 @@
 # CHANGEME: Set these variable to your liking
-title: ESPHome Project Template
-description: Powered by ESPHome and ESP Web Tools
+title: ESPHome Razer Nommo Pro Speaker Controller
+description: ESPHome-based BLE protocol control for Razer Nommo Pro speakers by dark_skeleton // d-rez. Powered by ESPHome and ESP Web Tools.
 theme: jekyll-theme-slate

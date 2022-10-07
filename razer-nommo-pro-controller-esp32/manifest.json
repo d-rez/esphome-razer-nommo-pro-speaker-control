@@ -1,0 +1,9 @@
+{
+  "chipFamily": "ESP32",
+  "parts": [
+    {
+      "path": "razer-nommo-pro-controller-esp32/razer-nommo-pro-controller-esp32.bin",
+      "offset": 0
+    }
+  ]
+}
