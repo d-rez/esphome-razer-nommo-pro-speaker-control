@@ -19,7 +19,7 @@ Supported features:
 - Mute toggle
 - Power control
 
-![HASS overview](/static/hass_device.png)
+![HASS overview](/hass_device.png)
 
 # Installation
 
@@ -86,14 +86,15 @@ media_player:
 
 # Making it even nicer
 
-![Lovelace overview](static/lovelace_overview.png)
-![Lovelace EQ Selection](/static/lovelace_eq_selection)
-![Lovelace Source Selection](static/lovelace_source_selection.png)
+![Lovelace overview](/lovelace_overview.png)
+![Lovelace EQ Selection](/lovelace_eq_selection)
+![Lovelace Source Selection](/lovelace_source_selection.png)
 
 To make it look like below, you'll need two more things:
 
 1. Download and install https://github.com/kalkih/mini-media-player custom component in your HASS
 2. Create a new Lovelace card with the following (or similar) code:
+
 ```
 type: vertical-stack
 title: Razer Nommo Pro
