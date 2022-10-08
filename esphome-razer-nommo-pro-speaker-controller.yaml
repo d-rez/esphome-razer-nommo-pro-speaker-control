@@ -14,7 +14,7 @@ esphome:
   # configuration and updates.
   project:
     name: esphome.razer-nommo-pro-speaker-controller
-    version: "1.0"
+    version: "1.1"
 
 esp32:
   board: esp32dev
@@ -54,7 +54,6 @@ captive_portal:
 # Handy if your device has a usb port for the user to add credentials when they first get it.
 improv_serial:
 
-
 # =========================================================
 # Razer's BLE protocol reverse engineering
 # Done in 2022 by dark_skeleton
@@ -81,9 +80,8 @@ improv_serial:
 #                ^^                                 volume level (0..100)
 #                   ^^                              bass level (0..100)
 #                      ^^                           ?? zeroes?
-#                         ^^ ^^ ^^ ^^ ^^ ^^ ^^ ^^   EQ bands (0x0..0x64 // 0..100), middle is 0x32 (50), each step being between... 0x06 and 0x05? Differs. Kinda weird. I.e. 0x32, 0x2c, 0x27, 0x21?
-#                                                            9 steps in app above and below 0dB, so 19 steps total, 5.26 per step? are they doing some weird rounding here? Or maybe it's just app
-#                                                            being weird and speaker accepting full 0..100 decimal range?
+#                         ^^ ^^ ^^ ^^ ^^ ^^ ^^ ^^   EQ bands (0x0..0x64), middle  being 0x32, each step being between... 0x06 and 0x05? Differs. Weird. I.e. 0x32, 0x2c, 0x27, 0x21?
+#                                                            9 steps in app above and below 0dB, so 19 steps total, 5.26 per step? rounded up?
 #
 # Example WRITE packets dissected:
 #
@@ -116,7 +114,7 @@ improv_serial:
 #   04ff0ad54910000000000000ff => ???
 # 01 00 fc 02 c0 48 -- request power, mute, eq, dolby, source etc. broadcast
 #   04 ff 08 c0 49 04 01 00 01 01 01 => already described above and below
-# 01 00 fc 02 cc 48 - volume, bass, probably more
+# 01 00 fc 02 cc 48 - volume, bass, eq bands
 #   04ff0dcc49071700423732323232373d => already described above and below
 
 # argument write operation types:
@@ -150,6 +148,16 @@ improv_serial:
 #     type: Source
 #     values: 01: optical, 03: bt, 02: analog, 04: usb
 #     reply: 0xc0, 0xcc
+#   0xc3:
+#     type: auto power-off toggle (after 20 minutes)
+#     values: 1/0 (on/off)
+#     reply: 0xc0
+#   0xd3:
+#     type: equalizer bands (8x 1byte)
+#     values: 0..100 (0x0..0x64), 0x32 (50) is 0dB, range seems to be -9dB..+9dB
+#     known steps: 0, 0x5, 0xB, 0x10, 0x16, 0x1B, 0x21, 0x26, 0x2C, 0x32, 0x37, 0x3D, 0x42, 0x48, 0x4D, 0x53, 0x58, 0x5E, 0x64
+#     steps set by phone app are +/- by 0x01 which means these can be set with a precision of 1
+#     reply: 0xcc
 
 text_sensor:
   - platform: template
@@ -239,6 +247,23 @@ switch:
     lambda: !lambda |-
       return id(nommo_muted_state).state;
 
+  - platform: template
+    name: "${device_name}_nommo_auto_poweroff"
+    icon: mdi:timer-outline
+    turn_on_action:
+      ble_client.ble_write:
+        id: nommo_tv
+        service_uuid: '5052494d-2dab-0341-6972-6f6861424c45'
+        characteristic_uuid: "43484152-2dab-3241-6972-6f6861424c45"
+        value: [0x01, 0x00, 0xfc, 0x03, 0xc3, 0x48, 0x01]
+    turn_off_action:
+      ble_client.ble_write:
+        id: nommo_tv
+        service_uuid: '5052494d-2dab-0341-6972-6f6861424c45'
+        characteristic_uuid: "43484152-2dab-3241-6972-6f6861424c45"
+        value: [0x01, 0x00, 0xfc, 0x03, 0xc3, 0x48, 0x00]
+    lambda: !lambda |-
+      return id(nommo_auto_poweroff_state).state;
 
 binary_sensor:
   - platform: status
@@ -257,6 +282,8 @@ binary_sensor:
     on_state:
       then:
         - component.update: nommo_eq
+  - platform: template
+    id: nommo_auto_poweroff_state
 
 
 number:
@@ -295,6 +322,184 @@ number:
             return {0x01, 0x00, 0xfc, 0x03, 0xc7, 0x48, uint8_t(x*100)};
     lambda: |-
       return id(bass_volume_raw).state;
+
+  # EQ bands below
+  - platform: template
+    name: "${device_name}_nommo_eq_band_60hz"
+    id: nommo_eq_band_60hz
+    min_value: -9
+    max_value: 9
+    step: 0.18
+    unit_of_measurement: "dB"
+    icon: "mdi:tune-vertical"
+    set_action:
+        - globals.set:
+            id: eq_upd_band
+            value: "1"
+        - globals.set:
+            id: eq_upd_val
+            value: !lambda "return x;"
+        - script.execute: nommo_eq_bands_write_ble
+    lambda: |-
+      return id(nommo_eq_band_60hz_raw).state;
+  - platform: template
+    name: "${device_name}_nommo_eq_band_250hz"
+    id: nommo_eq_band_250hz
+    min_value: -9
+    max_value: 9
+    step: 0.18
+    unit_of_measurement: "dB"
+    icon: "mdi:tune-vertical"
+    set_action:
+        - globals.set:
+            id: eq_upd_band
+            value: "2"
+        - globals.set:
+            id: eq_upd_val
+            value: !lambda "return x;"
+        - script.execute: nommo_eq_bands_write_ble
+    lambda: |-
+      return id(nommo_eq_band_250hz_raw).state;
+  - platform: template
+    name: "${device_name}_nommo_eq_band_500hz"
+    id: nommo_eq_band_500hz
+    min_value: -9
+    max_value: 9
+    step: 0.18
+    unit_of_measurement: "dB"
+    icon: "mdi:tune-vertical"
+    set_action:
+        - globals.set:
+            id: eq_upd_band
+            value: "3"
+        - globals.set:
+            id: eq_upd_val
+            value: !lambda "return x;"
+        - script.execute: nommo_eq_bands_write_ble
+    lambda: |-
+      return id(nommo_eq_band_500hz_raw).state;
+  - platform: template
+    name: "${device_name}_nommo_eq_band_1khz"
+    id: nommo_eq_band_1khz
+    min_value: -9
+    max_value: 9
+    step: 0.18
+    unit_of_measurement: "dB"
+    icon: "mdi:tune-vertical"
+    set_action:
+        - globals.set:
+            id: eq_upd_band
+            value: "4"
+        - globals.set:
+            id: eq_upd_val
+            value: !lambda "return x;"
+        - script.execute: nommo_eq_bands_write_ble
+    lambda: |-
+      return id(nommo_eq_band_1khz_raw).state;
+  - platform: template
+    name: "${device_name}_nommo_eq_band_2khz"
+    id: nommo_eq_band_2khz
+    min_value: -9
+    max_value: 9
+    step: 0.18
+    unit_of_measurement: "dB"
+    icon: "mdi:tune-vertical"
+    set_action:
+        - globals.set:
+            id: eq_upd_band
+            value: "5"
+        - globals.set:
+            id: eq_upd_val
+            value: !lambda "return x;"
+        - script.execute: nommo_eq_bands_write_ble
+    lambda: |-
+      return id(nommo_eq_band_2khz_raw).state;
+  - platform: template
+    name: "${device_name}_nommo_eq_band_4khz"
+    id: nommo_eq_band_4khz
+    min_value: -9
+    max_value: 9
+    step: 0.18
+    unit_of_measurement: "dB"
+    icon: "mdi:tune-vertical"
+    set_action:
+        - globals.set:
+            id: eq_upd_band
+            value: "6"
+        - globals.set:
+            id: eq_upd_val
+            value: !lambda "return x;"
+        - script.execute: nommo_eq_bands_write_ble
+    lambda: |-
+      return id(nommo_eq_band_4khz_raw).state;
+  - platform: template
+    name: "${device_name}_nommo_eq_band_8khz"
+    id: nommo_eq_band_8khz
+    min_value: -9
+    max_value: 9
+    step: 0.18
+    unit_of_measurement: "dB"
+    icon: "mdi:tune-vertical"
+    set_action:
+        - globals.set:
+            id: eq_upd_band
+            value: "7"
+        - globals.set:
+            id: eq_upd_val
+            value: !lambda "return x;"
+        - script.execute: nommo_eq_bands_write_ble
+    lambda: |-
+      return id(nommo_eq_band_8khz_raw).state;
+  - platform: template
+    name: "${device_name}_nommo_eq_band_16khz"
+    id: nommo_eq_band_16khz
+    min_value: -9
+    max_value: 9
+    step: 0.18
+    unit_of_measurement: "dB"
+    icon: "mdi:tune-vertical"
+    set_action:
+        - globals.set:
+            id: eq_upd_band
+            value: "8"
+        - globals.set:
+            id: eq_upd_val
+            value: !lambda "return x;"
+        - script.execute: nommo_eq_bands_write_ble
+    lambda: |-
+      return id(nommo_eq_band_16khz_raw).state;
+
+globals:
+  - id: eq_upd_band
+    type: uint8_t
+    restore_value: no
+    initial_value: '0'
+  - id: eq_upd_val
+    type: float
+    restore_value: no
+    initial_value: '0'
+
+script:
+  - id: nommo_eq_bands_write_ble
+    mode: queued
+    then:
+      - ble_client.ble_write:
+          id: nommo_tv
+          service_uuid: '5052494d-2dab-0341-6972-6f6861424c45'
+          characteristic_uuid: "43484152-2dab-3241-6972-6f6861424c45"
+          value: !lambda |-
+            // Speaker expects -9dB to be 0x00 and +9dB to be 0x64 which effectively means a 0.18 dB step for each 0x01 increase
+            // It also expects all values at once so let's call this as a script and keep the band # and value of last call in lambdas to avoid too much code duplication
+            return {0x01, 0x00, 0xfc, 0x0a, 0xd3, 0x48,
+              uint8_t(((id(eq_upd_band)==1?id(eq_upd_val):id(nommo_eq_band_60hz_raw).state)+9.0)/0.18),
+              uint8_t(((id(eq_upd_band)==2?id(eq_upd_val):id(nommo_eq_band_250hz_raw).state)+9.0)/0.18),
+              uint8_t(((id(eq_upd_band)==3?id(eq_upd_val):id(nommo_eq_band_500hz_raw).state)+9.0)/0.18),
+              uint8_t(((id(eq_upd_band)==4?id(eq_upd_val):id(nommo_eq_band_1khz_raw).state)+9.0)/0.18),
+              uint8_t(((id(eq_upd_band)==5?id(eq_upd_val):id(nommo_eq_band_2khz_raw).state)+9.0)/0.18),
+              uint8_t(((id(eq_upd_band)==6?id(eq_upd_val):id(nommo_eq_band_4khz_raw).state)+9.0)/0.18),
+              uint8_t(((id(eq_upd_band)==7?id(eq_upd_val):id(nommo_eq_band_8khz_raw).state)+9.0)/0.18),
+              uint8_t(((id(eq_upd_band)==8?id(eq_upd_val):id(nommo_eq_band_16khz_raw).state)+9.0)/0.18)
+            };
 
 
 sensor:
@@ -355,6 +560,79 @@ sensor:
       then:
         - component.update: nommo_volume
 
+  - platform: template
+    id: nommo_eq_band_60hz_raw
+    filters:
+      # Speaker expects -9dB to be 0x00 and +9dB to be 0x64 which effectively means a 0.18 dB step for each 0x01 increase
+      - multiply: 0.18
+      - offset: -9.0
+    on_value:
+      then:
+        - component.update: nommo_eq_band_60hz
+  - platform: template
+    id: nommo_eq_band_250hz_raw
+    filters:
+      # Speaker expects -9dB to be 0x00 and +9dB to be 0x64 which effectively means a 0.18 dB step for each 0x01 increase
+      - multiply: 0.18
+      - offset: -9.0
+    on_value:
+      then:
+        - component.update: nommo_eq_band_250hz
+  - platform: template
+    id: nommo_eq_band_500hz_raw
+    filters:
+      # Speaker expects -9dB to be 0x00 and +9dB to be 0x64 which effectively means a 0.18 dB step for each 0x01 increase
+      - multiply: 0.18
+      - offset: -9.0
+    on_value:
+      then:
+        - component.update: nommo_eq_band_500hz
+  - platform: template
+    id: nommo_eq_band_1khz_raw
+    filters:
+      # Speaker expects -9dB to be 0x00 and +9dB to be 0x64 which effectively means a 0.18 dB step for each 0x01 increase
+      - multiply: 0.18
+      - offset: -9.0
+    on_value:
+      then:
+        - component.update: nommo_eq_band_1khz
+  - platform: template
+    id: nommo_eq_band_2khz_raw
+    filters:
+      # Speaker expects -9dB to be 0x00 and +9dB to be 0x64 which effectively means a 0.18 dB step for each 0x01 increase
+      - multiply: 0.18
+      - offset: -9.0
+    on_value:
+      then:
+        - component.update: nommo_eq_band_2khz
+  - platform: template
+    id: nommo_eq_band_4khz_raw
+    filters:
+      # Speaker expects -9dB to be 0x00 and +9dB to be 0x64 which effectively means a 0.18 dB step for each 0x01 increase
+      - multiply: 0.18
+      - offset: -9.0
+    on_value:
+      then:
+        - component.update: nommo_eq_band_4khz
+  - platform: template
+    id: nommo_eq_band_8khz_raw
+    filters:
+      # Speaker expects -9dB to be 0x00 and +9dB to be 0x64 which effectively means a 0.18 dB step for each 0x01 increase
+      - multiply: 0.18
+      - offset: -9.0
+    on_value:
+      then:
+        - component.update: nommo_eq_band_8khz
+  - platform: template
+    id: nommo_eq_band_16khz_raw
+    filters:
+      # Speaker expects -9dB to be 0x00 and +9dB to be 0x64 which effectively means a 0.18 dB step for each 0x01 increase
+      - multiply: 0.18
+      - offset: -9.0
+    on_value:
+      then:
+        - component.update: nommo_eq_band_16khz
+
   - platform: ble_client
     ble_client_id: nommo_tv
     id: nommo_ble_notification
@@ -367,6 +645,14 @@ sensor:
       if (x[3] == 0xCC) {
         id(nommo_volume_raw).publish_state(x[5]);
         id(bass_volume_raw).publish_state(x[6]);
+        id(nommo_eq_band_60hz_raw).publish_state(x[8]);
+        id(nommo_eq_band_250hz_raw).publish_state(x[9]);
+        id(nommo_eq_band_500hz_raw).publish_state(x[10]);
+        id(nommo_eq_band_1khz_raw).publish_state(x[11]);
+        id(nommo_eq_band_2khz_raw).publish_state(x[12]);
+        id(nommo_eq_band_4khz_raw).publish_state(x[13]);
+        id(nommo_eq_band_8khz_raw).publish_state(x[14]);
+        id(nommo_eq_band_16khz_raw).publish_state(x[15]);
       }
       else if (x[3] == 0xC0) {
         id(nommo_power_state).publish_state(x[10]);
@@ -374,6 +660,7 @@ sensor:
         id(nommo_eq_dolby).publish_state(x[7]);
         id(nommo_eq_raw).publish_state(x[8]);
         id(nommo_source_raw).publish_state(x[5]);
+        id(nommo_auto_poweroff_state).publish_state(x[9]);
       }
       return {};
 
