@@ -2,7 +2,7 @@ type: vertical-stack
 title: Razer Nommo Pro
 cards:
   - type: custom:mini-media-player
-    entity: media_player.razer_nommo_pro_speakers
+    entity: media_player.razer_nommo_speakers
     source: full
     artwork: none
     group: false
@@ -19,7 +19,7 @@ cards:
   - type: conditional
     conditions:
       - entity: media_player.razer_nommo_speakers
-        state_not: 'off'
+        state: 'on'
     card:
       type: entities
       entities:
@@ -28,3 +28,40 @@ cards:
           secondary_info: none
       show_header_toggle: false
       state_color: false
+  - type: conditional
+    conditions:
+      - entity: select.rz_spk_ctl_nommo_eq
+        state: Custom EQ
+      - entity: media_player.razer_nommo_speakers
+        state: 'on'
+    card:
+      type: custom:bar-card
+      entities:
+        - entity: number.rz_spk_ctl_nommo_eq_band_60hz
+          name: 60Hz
+        - entity: number.rz_spk_ctl_nommo_eq_band_250hz
+          name: 250Hz
+        - entity: number.rz_spk_ctl_nommo_eq_band_500hz
+          name: 500Hz
+        - entity: number.rz_spk_ctl_nommo_eq_band_1khz
+          name: 1kHz
+        - entity: number.rz_spk_ctl_nommo_eq_band_2khz
+          name: 2kHz
+        - entity: number.rz_spk_ctl_nommo_eq_band_4khz
+          name: 4kHz
+        - entity: number.rz_spk_ctl_nommo_eq_band_8khz
+          name: 8kHz
+        - entity: number.rz_spk_ctl_nommo_eq_band_16khz
+          name: 16kHz
+      direction: up
+      columns: 8
+      height: 240px
+      max: 9
+      min: -9
+      target: 0.000001
+      unit_of_measurement: dB
+      positions:
+        icon: 'off'
+        indicator: 'off'
+      title: Custom Equalizer
+      decimal: '0'
