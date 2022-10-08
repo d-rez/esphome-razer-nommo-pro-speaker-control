@@ -20,8 +20,8 @@ Supported features:
 - Source selection
 - Mute toggle
 - Power control
-- Full EQ bands control (coming later in v1.1)
-- Ability to toggle automatic power-off after 20 minutes of no audio (coming later in v1.1)
+- Full EQ control: all bands adjustment with ~ 0.18dB precision _(Original app only allows for 1dB precision)_
+- Ability to toggle automatic power-off after 20 minutes of no audio
 
 ![HASS overview](/hass_device.png)
 
@@ -41,18 +41,20 @@ Don't forget to replace `rz_spk_ctl` device_name if you changed it in the esphom
 
 [Preview HASS Media Player yaml here](https://github.com/d-rez/esphome-razer-nommo-pro-speaker-control/blob/main/hass_media_player_configuration_snippet.yaml)
 
-Note that certain features (like bass level, connection status, EQ bands and some more) aren't able to be exposed to media_player component, but can be added separately in the Lovelace card group/stack.
+Note that certain features (like bass level, connection status, EQ bands and some more) aren't able to be exposed to media_player component, but can be added separately in the Lovelace card group/stack, however this should add a nice logic to those entities.
 
 # Making it even nicer
 
 ![Lovelace overview](/lovelace_overview.png)
 ![Lovelace EQ Selection](/lovelace_eq_selection.png)
 ![Lovelace Source Selection](/lovelace_source_selection.png)
+![New in v1.1: Equalizer display](/lovelace_eq_bands.png)
 
-To make it look like below, you'll need two more things:
+To make it look like above, you'll need a few more things:
 
-1. Download and install the [mini-media-player](https://github.com/kalkih/mini-media-player) custom component by kalkih in your HASS instance
-2. Create a new Lovelace card with the following (or similar) code:
+1. Install the [mini-media-player](https://github.com/kalkih/mini-media-player) hass custom component
+2. Install [bar-card](https://github.com/custom-cards/bar-card/) hass custom component
+2. Create a new Lovelace card with the following (or similar) code, adjust as needed
 
 [Preview Lovelace yaml here](https://github.com/d-rez/esphome-razer-nommo-pro-speaker-control/blob/main/lovelace_card.yaml)
 
@@ -73,9 +75,7 @@ The speaker can only connect to one device at a time, so if you want to use your
 phone app you'll have to make sure to disconnect using the `_nommo_enable_control`
 switch.
 
-# Future plans (v1.1 and beyond)
-- Add full custom EQ bands control
-- Add an automatic power-off toggle
+# Future plans (v1.2 and beyond)
 - Think of a way to allow users to flash their ESP directly via this website instead of having to compile themselves. Possible issues with this approach:
   - entity_ids in hass might duplicate - possibly not an issue?
   - need a way for user to enter speaker MAC address after flashing (?) since the image is compiled at commit push time. Global variables? Will see.
