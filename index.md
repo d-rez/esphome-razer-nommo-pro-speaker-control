@@ -28,7 +28,7 @@ Supported features:
 
 # Installation
 
-Download the project [yaml config file](https://github.com/d-rez/esphome-razer-nommo-pro-speaker-control/blob/main/esphome-razer-nommo-pro-speaker-controller.yaml) from the repository. Edit required (`#CHANGE ME`) values, compile and flash as usual. Best to flash via serial connection.
+Download the project [yaml config file](https://github.com/d-rez/esphome-razer-nommo-pro-speaker-control/blob/main/esphome-razer-nommo-pro-speaker-controller.yaml) from the repository. Edit required (`#CHANGE ME`)values, compile and flash as usual. Best to flash via serial connection.
 
 ## Important
 - Make sure to add speaker's MAC address in the substitutions section.
