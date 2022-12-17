@@ -35,7 +35,8 @@ Download the project [yaml config file](https://github.com/d-rez/esphome-razer-n
 
 # Adding as a Media Player to Home Assistant
 
-You can link together certain controls for a more unified look/feel of the controller
+You can link together certain controls for a more unified look/feel of the controller. Adding the speaker like that will also let you use them with the [Google Assistant integration](https://www.home-assistant.io/integrations/google_assistant/#available-domains) to control certain features of your speaker, specifically on/off and volume. Source selection is supposed to be supported as well, but I wasn't able to get it to work myself.
+
 Once you have connected with HASS via the API, add contents of the following file to your `configuration.yaml`.
 Don't forget to replace `rz_spk_ctl` device_name if you changed it in the esphome yaml.
 
