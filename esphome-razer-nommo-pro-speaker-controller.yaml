@@ -15,20 +15,23 @@ esphome:
   project:
     name: esphome.razer-nommo-pro-speaker-controller
     version: "1.1"
+  on_boot:
+    then:
+      - lambda: "id(blue_led).turn_on();"
 
 esp32:
-  board: esp32dev
-  framework:
-    type: arduino
+  board: esp32doit-devkit-v1
 
 # To be able to get logs from the device via serial and api.
 logger:
 
 # API is a requirement of the dashboard import.
 api:
+  # CHANGE ME
 
 # OTA is required for Over-the-Air updating
 ota:
+  # CHANGE ME
 
 # This should point to the public location of this yaml file.
 dashboard_import:
@@ -43,10 +46,6 @@ wifi:
 # to provision wifi credentials to the device.
 captive_portal:
 
-##########################################################
-# Most projects should not remove anything from above here
-# and should just modify the name, project name/version
-# and git url for the dashboard_import
 ##########################################################
 
 
@@ -74,6 +73,14 @@ output:
     platform: gpio
     pin: GPIO2
     # Using output.gpio here because status_led component does not clear errored state once BLE device is disconnected i.e. using the ble_client switch
+
+remote_receiver:
+  pin:
+    number: GPIO18 # CHANGE ME (if needed)
+    inverted: true
+    mode:
+      input: true
+      pullup: false
 
 ble_client:
   - mac_address: "${speaker_mac}"
@@ -128,6 +135,7 @@ switch:
 
   - platform: template
     name: "${device_name}_nommo_mute"
+    id: nommo_mute_switch
     icon: mdi:volume-mute
     turn_on_action:
       ble_client.ble_write:
@@ -181,7 +189,69 @@ binary_sensor:
         - component.update: nommo_eq
   - platform: template
     id: nommo_auto_poweroff_state
+  - platform: remote_receiver
+    id: ir_remote_volup
+    lg:
+      # 04FB 02FD
+      data: 0x20DF40BF
+      nbits: 32
+    on_press:
+      then:
+        if:
+          condition:
+            - binary_sensor.is_on: nommo_power_state
+          then:
+            lambda: |-
+              auto call = id(nommo_volume).make_call();
+              float v = id(nommo_volume).state + 0.05;
+              if (v>1) {
+                v = 1;
+              }
+              call.set_value(v);
+              call.perform();
+  - platform: remote_receiver
+    id: ir_remote_voldn
+    lg:
+      # 04FB 03FC
+      data: 0x20DFC03F
+      nbits: 32
+    on_press:
+      then:
+        if:
+          condition:
+            - binary_sensor.is_on: nommo_power_state
+          then:
+            lambda: |-
+              auto call = id(nommo_volume).make_call();
+              float v = id(nommo_volume).state - 0.05;
+              if (v<0) {
+                v = 0;
+              }
+              call.set_value(v);
+              call.perform();
+  - platform: remote_receiver
+    id: ir_remote_mute
+    lg:
+      # 04FB 09F6
+      data: 0x20DF906F
+      nbits: 32
+    on_press:
+      then:
+        if:
+          condition:
+            - binary_sensor.is_on: nommo_power_state
+          then:
+            switch.toggle: nommo_mute_switch
 
+globals:
+  - id: nommo_eq_bands
+    type: float[8]
+    restore_value: no
+    initial_value: "{0,0,0,0,0,0,0,0}"
+  - id: nommo_eq_bands_modified
+    type: bool[8]
+    restore_value: no
+    initial_value: "{false,false,false,false,false,false,false,false}"
 
 number:
   - platform: template
@@ -192,13 +262,14 @@ number:
     step: 0.01
     icon: 'mdi:volume-high'
     set_action:
-      - ble_client.ble_write:
-          id: nommo_tv
-          service_uuid: '5052494d-2dab-0341-6972-6f6861424c45'
-          characteristic_uuid: "43484152-2dab-3241-6972-6f6861424c45"
-          value: !lambda |-
-            // x coming from home assistant media_player will be in 0..1 range, speaker expects 0..100
-            return {0x01, 0x00, 0xfc, 0x03, 0xc8, 0x48, uint8_t(x*100)};
+      if:
+        condition:
+          - binary_sensor.is_on: nommo_power_state
+        then:
+          - script.execute:
+              id: nommo_vol_write_ble
+              volume: !lambda "return x;"
+
     lambda: |-
       return id(nommo_volume_raw).state;
 
@@ -230,13 +301,10 @@ number:
     unit_of_measurement: "dB"
     icon: "mdi:tune-vertical"
     set_action:
-        - globals.set:
-            id: eq_upd_band
-            value: "1"
-        - globals.set:
-            id: eq_upd_val
-            value: !lambda "return x;"
-        - script.execute: nommo_eq_bands_write_ble
+      - lambda: |-
+          id(nommo_eq_bands)[0] = x;
+          id(nommo_eq_bands_modified)[0] = true;
+      - script.execute: nommo_eq_bands_write_ble
     lambda: |-
       return id(nommo_eq_band_60hz_raw).state;
   - platform: template
@@ -248,13 +316,10 @@ number:
     unit_of_measurement: "dB"
     icon: "mdi:tune-vertical"
     set_action:
-        - globals.set:
-            id: eq_upd_band
-            value: "2"
-        - globals.set:
-            id: eq_upd_val
-            value: !lambda "return x;"
-        - script.execute: nommo_eq_bands_write_ble
+      - lambda: |-
+          id(nommo_eq_bands)[1] = x;
+          id(nommo_eq_bands_modified)[1] = true;
+      - script.execute: nommo_eq_bands_write_ble
     lambda: |-
       return id(nommo_eq_band_250hz_raw).state;
   - platform: template
@@ -266,13 +331,10 @@ number:
     unit_of_measurement: "dB"
     icon: "mdi:tune-vertical"
     set_action:
-        - globals.set:
-            id: eq_upd_band
-            value: "3"
-        - globals.set:
-            id: eq_upd_val
-            value: !lambda "return x;"
-        - script.execute: nommo_eq_bands_write_ble
+      - lambda: |-
+          id(nommo_eq_bands)[2] = x;
+          id(nommo_eq_bands_modified)[20] = true;
+      - script.execute: nommo_eq_bands_write_ble
     lambda: |-
       return id(nommo_eq_band_500hz_raw).state;
   - platform: template
@@ -284,13 +346,10 @@ number:
     unit_of_measurement: "dB"
     icon: "mdi:tune-vertical"
     set_action:
-        - globals.set:
-            id: eq_upd_band
-            value: "4"
-        - globals.set:
-            id: eq_upd_val
-            value: !lambda "return x;"
-        - script.execute: nommo_eq_bands_write_ble
+      - lambda: |-
+          id(nommo_eq_bands)[3] = x;
+          id(nommo_eq_bands_modified)[3] = true;
+      - script.execute: nommo_eq_bands_write_ble
     lambda: |-
       return id(nommo_eq_band_1khz_raw).state;
   - platform: template
@@ -302,13 +361,10 @@ number:
     unit_of_measurement: "dB"
     icon: "mdi:tune-vertical"
     set_action:
-        - globals.set:
-            id: eq_upd_band
-            value: "5"
-        - globals.set:
-            id: eq_upd_val
-            value: !lambda "return x;"
-        - script.execute: nommo_eq_bands_write_ble
+      - lambda: |-
+          id(nommo_eq_bands)[4] = x;
+          id(nommo_eq_bands_modified)[4] = true;
+      - script.execute: nommo_eq_bands_write_ble
     lambda: |-
       return id(nommo_eq_band_2khz_raw).state;
   - platform: template
@@ -320,13 +376,10 @@ number:
     unit_of_measurement: "dB"
     icon: "mdi:tune-vertical"
     set_action:
-        - globals.set:
-            id: eq_upd_band
-            value: "6"
-        - globals.set:
-            id: eq_upd_val
-            value: !lambda "return x;"
-        - script.execute: nommo_eq_bands_write_ble
+      - lambda: |-
+          id(nommo_eq_bands)[5] = x;
+          id(nommo_eq_bands_modified)[5] = true;
+      - script.execute: nommo_eq_bands_write_ble
     lambda: |-
       return id(nommo_eq_band_4khz_raw).state;
   - platform: template
@@ -338,13 +391,10 @@ number:
     unit_of_measurement: "dB"
     icon: "mdi:tune-vertical"
     set_action:
-        - globals.set:
-            id: eq_upd_band
-            value: "7"
-        - globals.set:
-            id: eq_upd_val
-            value: !lambda "return x;"
-        - script.execute: nommo_eq_bands_write_ble
+      - lambda: |-
+          id(nommo_eq_bands)[6] = x;
+          id(nommo_eq_bands_modified)[6] = true;
+      - script.execute: nommo_eq_bands_write_ble
     lambda: |-
       return id(nommo_eq_band_8khz_raw).state;
   - platform: template
@@ -356,30 +406,18 @@ number:
     unit_of_measurement: "dB"
     icon: "mdi:tune-vertical"
     set_action:
-        - globals.set:
-            id: eq_upd_band
-            value: "8"
-        - globals.set:
-            id: eq_upd_val
-            value: !lambda "return x;"
-        - script.execute: nommo_eq_bands_write_ble
+      - lambda: |-
+          id(nommo_eq_bands)[7] = x;
+          id(nommo_eq_bands_modified)[7] = true;
+      - script.execute: nommo_eq_bands_write_ble
     lambda: |-
       return id(nommo_eq_band_16khz_raw).state;
 
-globals:
-  - id: eq_upd_band
-    type: uint8_t
-    restore_value: no
-    initial_value: '0'
-  - id: eq_upd_val
-    type: float
-    restore_value: no
-    initial_value: '0'
-
 script:
   - id: nommo_eq_bands_write_ble
-    mode: queued
+    mode: restart
     then:
+      - delay: 100ms
       - ble_client.ble_write:
           id: nommo_tv
           service_uuid: '5052494d-2dab-0341-6972-6f6861424c45'
@@ -388,16 +426,29 @@ script:
             // Speaker expects -9dB to be 0x00 and +9dB to be 0x64 which effectively means a 0.18 dB step for each 0x01 increase
             // It also expects all values at once so let's call this as a script and keep the band # and value of last call in lambdas to avoid too much code duplication
             return {0x01, 0x00, 0xfc, 0x0a, 0xd3, 0x48,
-              uint8_t(((id(eq_upd_band)==1?id(eq_upd_val):id(nommo_eq_band_60hz_raw).state)+9.0)/0.18),
-              uint8_t(((id(eq_upd_band)==2?id(eq_upd_val):id(nommo_eq_band_250hz_raw).state)+9.0)/0.18),
-              uint8_t(((id(eq_upd_band)==3?id(eq_upd_val):id(nommo_eq_band_500hz_raw).state)+9.0)/0.18),
-              uint8_t(((id(eq_upd_band)==4?id(eq_upd_val):id(nommo_eq_band_1khz_raw).state)+9.0)/0.18),
-              uint8_t(((id(eq_upd_band)==5?id(eq_upd_val):id(nommo_eq_band_2khz_raw).state)+9.0)/0.18),
-              uint8_t(((id(eq_upd_band)==6?id(eq_upd_val):id(nommo_eq_band_4khz_raw).state)+9.0)/0.18),
-              uint8_t(((id(eq_upd_band)==7?id(eq_upd_val):id(nommo_eq_band_8khz_raw).state)+9.0)/0.18),
-              uint8_t(((id(eq_upd_band)==8?id(eq_upd_val):id(nommo_eq_band_16khz_raw).state)+9.0)/0.18)
+              uint8_t(((id(nommo_eq_bands_modified)[0]==true?id(nommo_eq_bands)[0]:id(nommo_eq_band_60hz_raw).state)+9.0)/0.18),
+              uint8_t(((id(nommo_eq_bands_modified)[1]==true?id(nommo_eq_bands)[1]:id(nommo_eq_band_250hz_raw).state)+9.0)/0.18),
+              uint8_t(((id(nommo_eq_bands_modified)[2]==true?id(nommo_eq_bands)[2]:id(nommo_eq_band_500hz_raw).state)+9.0)/0.18),
+              uint8_t(((id(nommo_eq_bands_modified)[3]==true?id(nommo_eq_bands)[3]:id(nommo_eq_band_1khz_raw).state)+9.0)/0.18),
+              uint8_t(((id(nommo_eq_bands_modified)[4]==true?id(nommo_eq_bands)[4]:id(nommo_eq_band_2khz_raw).state)+9.0)/0.18),
+              uint8_t(((id(nommo_eq_bands_modified)[5]==true?id(nommo_eq_bands)[5]:id(nommo_eq_band_4khz_raw).state)+9.0)/0.18),
+              uint8_t(((id(nommo_eq_bands_modified)[6]==true?id(nommo_eq_bands)[6]:id(nommo_eq_band_8khz_raw).state)+9.0)/0.18),
+              uint8_t(((id(nommo_eq_bands_modified)[7]==true?id(nommo_eq_bands)[7]:id(nommo_eq_band_16khz_raw).state)+9.0)/0.18)
             };
-
+      - lambda: "for (int i=0; i<8; i++) { id(nommo_eq_bands_modified)[i] = false; }"
+  - id: nommo_vol_write_ble
+    mode: restart
+    parameters:
+      volume: float
+    then:
+      - delay: 100ms
+      - ble_client.ble_write:
+          id: nommo_tv
+          service_uuid: '5052494d-2dab-0341-6972-6f6861424c45'
+          characteristic_uuid: "43484152-2dab-3241-6972-6f6861424c45"
+          value: !lambda |-
+            // x coming from home assistant media_player will be in 0..1 range, speaker expects 0..100
+            return {0x01, 0x00, 0xfc, 0x03, 0xc8, 0x48, uint8_t(volume*100)};
 
 sensor:
   - platform: wifi_signal
@@ -533,6 +584,7 @@ sensor:
   - platform: ble_client
     ble_client_id: nommo_tv
     id: nommo_ble_notification
+    type: characteristic
     service_uuid: '5052494d-2dab-0341-6972-6f6861424c45'
     characteristic_uuid: '43484152-2dab-3141-6972-6f6861424c45'
     notify: true
@@ -560,7 +612,6 @@ sensor:
         id(nommo_auto_poweroff_state).publish_state(x[9]);
       }
       return {};
-
 
 select:
   - platform: template
