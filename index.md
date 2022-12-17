@@ -20,22 +20,25 @@ Supported features:
 - Source selection
 - Mute toggle
 - Power control
-- Full EQ control: all bands adjustment with ~ 0.18dB precision _(Original app only allows for 1dB precision)_
-- Ability to toggle automatic power-off after 20 minutes of no audio
+- (v1.1) Full EQ control: all bands adjustment with ~ 0.18dB precision _(Original app only allows for 1dB precision)_
+- (v1.1) Ability to toggle automatic power-off after 20 minutes of no audio
+- (v1.2) Ability to control volume using the TV remote (currently uses LG remote infrared codes) easily via an infrared receiver on pin GPIO18
 
 ![HASS overview](/hass_device.png)
 
 # Installation
 
-Download the project [yaml config file](https://github.com/d-rez/esphome-razer-nommo-pro-speaker-control/blob/main/esphome-razer-nommo-pro-speaker-controller.yaml) from the repository. Edit required values, compile and flash as usual.
+Download the project [yaml config file](https://github.com/d-rez/esphome-razer-nommo-pro-speaker-control/blob/main/esphome-razer-nommo-pro-speaker-controller.yaml) from the repository. Edit required (`#CHANGE ME`) values, compile and flash as usual. Best to flash via serial connection.
 
 ## Important
 - Make sure to add speaker's MAC address in the substitutions section.
 - Also add [HASS API](https://esphome.io/components/api.html) and [ESPHome OTA](https://esphome.io/components/ota.html) passwords for security as well as [add proper WiFi credentials](https://esphome.io/components/wifi.html)
+- Adjust `remote_receiver` configuration as needed
 
 # Adding as a Media Player to Home Assistant
 
-You can link together certain controls for a more unified look/feel of the controller
+You can link together certain controls for a more unified look/feel of the controller. Adding the speaker like that will also let you use them with the [Google Assistant integration](https://www.home-assistant.io/integrations/google_assistant/#available-domains) to control certain features of your speaker, specifically on/off and volume. Source selection is supposed to be supported as well, but I wasn't able to get it to work myself.
+
 Once you have connected with HASS via the API, add contents of the following file to your `configuration.yaml`.
 Don't forget to replace `rz_spk_ctl` device_name if you changed it in the esphome yaml.
 
@@ -65,8 +68,7 @@ power sync with other devices and more using HASS Automations or Node Red.
 
 # It's all cool and nice but I'm only here for Razer's BLE protocol deets
 
-I haven't decided if I want to just paste the details here or link them to a separate file.
-For the time being you can simply access the project's [yaml config file](https://github.com/d-rez/esphome-razer-nommo-pro-speaker-control/blob/main/esphome-razer-nommo-pro-speaker-controller.yaml), and scroll down a page or two.
+[You can access  my findings regarding the protocol used here](https://github.com/d-rez/esphome-razer-nommo-pro-speaker-control/blob/main/razer-ble-protocol-reverse-engineering.md).
 I tried to keep it as informative (for both you and the future me) but it might not be explained in the best way. In this case - oh well, bad luck.
 
 # Notes
@@ -74,8 +76,3 @@ I tried to keep it as informative (for both you and the future me) but it might 
 The speaker can only connect to one device at a time, so if you want to use your
 phone app you'll have to make sure to disconnect using the `_nommo_enable_control`
 switch.
-
-# Future plans (v1.2 and beyond)
-- Think of a way to allow users to flash their ESP directly via this website instead of having to compile themselves. Possible issues with this approach:
-  - entity_ids in hass might duplicate - possibly not an issue?
-  - need a way for user to enter speaker MAC address after flashing (?) since the image is compiled at commit push time. Global variables? Will see.
